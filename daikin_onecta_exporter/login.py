@@ -11,9 +11,7 @@ from . import onecta
 
 
 def main(opener=urllib.request.urlopen) -> None:
-    cid, secret = os.environ.get("DAIKIN_CLIENT_ID"), os.environ.get("DAIKIN_CLIENT_SECRET")
-    if not cid or not secret:
-        sys.exit("DAIKIN_CLIENT_ID and DAIKIN_CLIENT_SECRET are required")
+    cid, secret = onecta.credentials()
     # Daikin's portal rejects https://localhost and plain http, so the owner names an https page of their own
     redirect = os.environ.get("DAIKIN_REDIRECT_URI")
     if not redirect:

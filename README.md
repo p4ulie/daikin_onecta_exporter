@@ -74,8 +74,8 @@ For the homenet_2.0 deployment, all three values go into OpenBao at `kv/daikin-o
 from there), then the temporary file goes away:
 
 ```sh
-bao kv put kv/daikin-onecta client-id="$DAIKIN_CLIENT_ID" client-secret=- token-json=@/tmp/daikin-token.json \
-  <<<"$DAIKIN_CLIENT_SECRET"
+printf %s "$DAIKIN_CLIENT_SECRET" |
+  bao kv put kv/daikin-onecta client-id="$DAIKIN_CLIENT_ID" client-secret=- token-json=@/tmp/daikin-token.json
 rm /tmp/daikin-token.json
 unset DAIKIN_CLIENT_ID DAIKIN_CLIENT_SECRET
 ```

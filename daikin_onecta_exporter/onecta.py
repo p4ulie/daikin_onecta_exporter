@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import time
 import urllib.error
@@ -169,3 +170,12 @@ class Client:
             raise OnectaError(f"API HTTP {e.code}") from None
         except Exception as e:
             raise OnectaError(f"API request failed: {type(e).__name__}") from None
+
+
+def credentials() -> tuple[str, str]:
+    # A stray newline (from `<<<` or a password manager paste) makes Daikin answer invalid_client.
+    cid = os.environ.get("DAIKIN_CLIENT_ID", "").strip()
+    secret = os.environ.get("DAIKIN_CLIENT_SECRET", "").strip()
+    if not cid or not secret:
+        sys.exit("DAIKIN_CLIENT_ID and DAIKIN_CLIENT_SECRET are required")
+    return cid, secret

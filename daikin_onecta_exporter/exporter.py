@@ -2,7 +2,6 @@
 
 import logging
 import os
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -174,9 +173,7 @@ def poll_interval() -> float:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    cid, secret = os.environ.get("DAIKIN_CLIENT_ID"), os.environ.get("DAIKIN_CLIENT_SECRET")
-    if not cid or not secret:
-        sys.exit("DAIKIN_CLIENT_ID and DAIKIN_CLIENT_SECRET are required")
+    cid, secret = onecta.credentials()
     interval = poll_interval()
     port = int(os.environ.get("DAIKIN_EXPORTER_PORT", "9879"))
     client = onecta.Client(cid, secret, os.environ.get("DAIKIN_TOKEN_FILE", "/data/token.json"),

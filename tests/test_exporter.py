@@ -239,3 +239,10 @@ def test_failed_token_save_keeps_poll_and_retries(tmp_path, monkeypatch, caplog)
 
 def test_token_saved_is_one_before_first_poll():
     assert "daikin_token_saved 1.0" in render(State())
+
+
+def test_credentials_ignore_surrounding_whitespace(monkeypatch):
+    # a secret stored through `<<<` or pasted from a password manager often carries a newline Daikin rejects
+    monkeypatch.setenv("DAIKIN_CLIENT_ID", " cid\n")
+    monkeypatch.setenv("DAIKIN_CLIENT_SECRET", "sec\n")
+    assert onecta.credentials() == ("cid", "sec")
