@@ -10,6 +10,19 @@ ServiceMonitor, alerts and a "Heat pump" Grafana dashboard.
 
 Design: `docs/superpowers/specs/2026-11-18-daikin-onecta-exporter-design.md`.
 
+## Running locally
+
+```sh
+cp .env.example .env     # fill in DAIKIN_CLIENT_ID and DAIKIN_CLIENT_SECRET
+mise run test            # unit tests, no network
+mise run exporter        # needs a token: DAIKIN_TOKEN_FILE (or DAIKIN_TOKEN_JSON as a seed) from the login helper
+curl -s localhost:9879/metrics | grep ^daikin_
+```
+
+Point `DAIKIN_TOKEN_FILE` at a writable path (the default `/data/token.json` is the container's volume). The
+exporter writes only that file's directory, so it runs fine on a read-only root filesystem. `mise run image:build`
+builds the image locally; `image:push` is described below.
+
 ## Connecting to your Daikin account
 
 Daikin's API uses OAuth2. You register your own "app" on Daikin's developer portal, authorize it once in a browser

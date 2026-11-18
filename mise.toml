@@ -1,0 +1,32 @@
+[tools]
+python = "3.12"
+uv = "latest"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+_.file = { path = ".env", tools = true }  # client id and secret, git-ignored; see .env.example
+
+[tasks.install]
+run = "uv pip install -r requirements.txt -r requirements-dev.txt"
+
+[tasks.test]
+run = "uv run --with-requirements requirements.txt --with-requirements requirements-dev.txt python -m pytest -q tests/"
+
+[tasks.exporter]
+run = "python -m daikin_onecta_exporter.exporter"
+
+# One-time OAuth login; the seed JSON is the only thing on stdout, the rest goes to stderr.
+[tasks.login]
+run = "python -m daikin_onecta_exporter.login"
+
+[tasks."image:build"]
+run = "docker build -t daikin-onecta-exporter:dev ."
+
+# Version comes from Chart.yaml so there is one place to bump it.
+[tasks."image:push"]
+run = '''
+registry=${REGISTRY:-10.34.1.1:30095}
+v=$(sed -n 's/^version: *//p' helm/daikin-onecta-exporter/Chart.yaml | tr -d '"')
+[ -n "$v" ] || { echo "no version: in helm/daikin-onecta-exporter/Chart.yaml" >&2; exit 1; }
+docker build -t "$registry/daikin-onecta-exporter:$v" . && docker push "$registry/daikin-onecta-exporter:$v"
+'''

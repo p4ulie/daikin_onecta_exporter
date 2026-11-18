@@ -1,0 +1,67 @@
+[
+  {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "deviceModel": "Altherma",
+    "type": "heating-wlan",
+    "isCloudConnectionUp": {"value": true},
+    "managementPoints": [
+      {
+        "embeddedId": "gateway",
+        "managementPointType": "gateway",
+        "modelInfo": {"value": "BRP069A78"},
+        "firmwareVersion": {"value": "1.2.3"}
+      },
+      {
+        "embeddedId": "climateControlMainZone",
+        "managementPointType": "climateControl",
+        "consumptionData": {"value": {"electrical": {
+          "heating": {"d": [1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 5, null, null, null, null, null, null, null, null, null]},
+          "cooling": {"d": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, null, null, null, null, null, null, null]}
+        }}},
+        "errorCode": {"value": "-00"},
+        "isInEmergencyState": {"value": false},
+        "isInErrorState": {"value": false},
+        "isInWarningState": {"value": true},
+        "onOffMode": {"value": "on"},
+        "operationMode": {"value": "heating"},
+        "sensoryData": {"value": {
+          "roomTemperature": {"value": 21},
+          "outdoorTemperature": {"value": 4.5},
+          "leavingWaterTemperature": {"value": 31},
+          "returnWaterTemperature": {"value": null}
+        }},
+        "temperatureControl": {"value": {"operationModes": {
+          "heating": {"setpoints": {
+            "roomTemperature": {"value": 20.5},
+            "leavingWaterOffset": {"value": -2}
+          }},
+          "cooling": {"setpoints": {"roomTemperature": {"value": 24}}}
+        }}}
+      },
+      {
+        "embeddedId": "domesticHotWaterTank",
+        "managementPointType": "domesticHotWaterTank",
+        "consumptionData": {"value": {"electrical": {
+          "heating": {"d": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, null, null, null, null, null, null, null, null, null]}
+        }}},
+        "errorCode": {"value": "A1-01"},
+        "isInEmergencyState": {"value": false},
+        "isInErrorState": {"value": true},
+        "isInWarningState": {"value": false},
+        "isPowerfulModeActive": {"value": true},
+        "onOffMode": {"value": "off"},
+        "operationMode": {"value": "heating"},
+        "sensoryData": {"value": {"tankTemperature": {"value": 48}}},
+        "temperatureControl": {"value": {"operationModes": {"heating": {"setpoints": {
+          "domesticHotWaterTemperature": {"value": 50}
+        }}}}}
+      },
+      {
+        "embeddedId": "indoorUnitHydro",
+        "managementPointType": "indoorUnitHydro",
+        "modelInfo": {"value": "EHVX08S23EJ9W"},
+        "softwareVersion": {"value": "0221"}
+      }
+    ]
+  }
+]
