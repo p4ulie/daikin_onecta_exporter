@@ -105,7 +105,7 @@ helm install daikin helm/daikin-onecta-exporter --set onecta.secretName=daikin-o
 | `image.repository` | `10.34.1.1:30095/daikin-onecta-exporter` | Image to run |
 | `image.tag` | `""` | Empty means the chart's `appVersion` |
 | `onecta.secretName` | none | Required existing Secret with keys `client-id`, `client-secret`, `token-json`; the chart creates none |
-| `onecta.interval` | `600` | Poll interval in seconds (Daikin allows about 200 calls a day) |
+| `onecta.interval` | `600` | Poll interval in seconds (Daikin allows about 200 calls a day). The dashboard's history panels step at 15 minutes, homenet's interval |
 | `persistence.size`, `.storageClass` | `1Gi`, `""` | RWO volume at `/data` for the rotated refresh token; empty class means the cluster default |
 | `resources` | 10m CPU, 32Mi request, 96Mi limit | Pod resources |
 | `serviceMonitor.enabled`, `.interval` | `false`, `60s` | Prometheus Operator scrape config |

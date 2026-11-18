@@ -148,3 +148,12 @@ def test_dashboard_panel_queries():
         panels = {p["title"]: p for p in json.load(f)["panels"]}
     assert [t["expr"] for t in panels["Mode"]["targets"]] == ["daikin_operation_mode_info == 1"]  # on/off has its own panel
     assert 'setpoint!="leavingWaterOffset"' in panels["Setpoint vs actual"]["targets"][0]["expr"]  # an offset, not degrees
+
+
+def test_history_panels_step_at_the_poll_interval():
+    # the cloud is read every 15 minutes in homenet; sloped lines and 30 s points would invent readings in between
+    with open(f"{CHART}/dashboards/daikin.json") as f:
+        panels = [p for p in json.load(f)["panels"] if p["type"] in ("timeseries", "state-timeline")]
+    assert panels and all(p["interval"] == "15m" for p in panels)
+    assert all(p["fieldConfig"]["defaults"]["custom"]["lineInterpolation"] == "stepAfter"
+               for p in panels if p["type"] == "timeseries")

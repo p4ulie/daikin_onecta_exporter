@@ -560,7 +560,10 @@
               }
             ]
           },
-          "unit": "celsius"
+          "unit": "celsius",
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
         },
         "overrides": []
       },
@@ -572,7 +575,8 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
+      },
+      "interval": "15m"
     },
     {
       "id": 12,
@@ -622,7 +626,10 @@
               }
             ]
           },
-          "unit": "celsius"
+          "unit": "celsius",
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
         },
         "overrides": []
       },
@@ -634,7 +641,8 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
+      },
+      "interval": "15m"
     },
     {
       "id": 13,
@@ -684,7 +692,8 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "interval": "15m"
     },
     {
       "id": 14,
@@ -804,7 +813,10 @@
               }
             ]
           },
-          "unit": "kwatth"
+          "unit": "kwatth",
+          "custom": {
+            "lineInterpolation": "stepAfter"
+          }
         },
         "overrides": []
       },
@@ -816,7 +828,8 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
+      },
+      "interval": "15m"
     },
     {
       "id": 17,
