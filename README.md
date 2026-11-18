@@ -40,8 +40,10 @@ Do the steps in this order.
 ### 2. Create the app
 
 1. In the portal, open **My Apps** and create a new app. The name is only for you, e.g. `homelab-exporter`.
-2. Set the **redirect URI** to `https://localhost/`. Nothing has to listen there: the browser shows an error page,
-   and you copy that page's address, which carries the one-time code.
+2. Set the **redirect URI** to an `https://` address on a domain you control, e.g.
+   `https://grafana.home.example.net/daikin`. The portal refuses `https://localhost` and `http://`. Nothing has to
+   answer there: the browser may show a 404 or an error page, and you copy that page's address, which carries the
+   one-time code. A host of your own keeps the code off other people's servers.
 3. Save. The portal shows the **client ID** and the **client secret**. Copy the secret now; the portal may show it
    only once. Keep both in your password manager.
 
@@ -54,12 +56,13 @@ output, so it never appears on screen. Run it under `umask 077` so the token fil
 ```sh
 read -r "DAIKIN_CLIENT_ID?Client ID: " && read -rs "DAIKIN_CLIENT_SECRET?Client secret: " && echo
 export DAIKIN_CLIENT_ID DAIKIN_CLIENT_SECRET
+export DAIKIN_REDIRECT_URI=https://grafana.home.example.net/daikin   # exactly as registered in step 2
 (umask 077; mise run login > /tmp/daikin-token.json)    # or: python -m daikin_onecta_exporter.login
 ```
 
 1. Open the link it prints in a browser and log in with your Onecta account.
 2. Tick the consent checkbox and press **I agree**.
-3. The browser lands on `https://localhost/?code=…` (an error page is expected). Copy the **whole address** from the
+3. The browser lands on your redirect address with `?code=…` added (a 404 or error page is expected). Copy the **whole address** from the
    address bar and paste it into the helper.
 4. The helper exchanges the code and writes the token JSON. It never prints the token to the terminal.
 

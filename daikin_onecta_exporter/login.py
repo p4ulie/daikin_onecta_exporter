@@ -14,12 +14,15 @@ def main(opener=urllib.request.urlopen) -> None:
     cid, secret = os.environ.get("DAIKIN_CLIENT_ID"), os.environ.get("DAIKIN_CLIENT_SECRET")
     if not cid or not secret:
         sys.exit("DAIKIN_CLIENT_ID and DAIKIN_CLIENT_SECRET are required")
-    redirect = os.environ.get("DAIKIN_REDIRECT_URI", "https://localhost/")
+    # Daikin's portal rejects https://localhost and plain http, so the owner names an https page of their own
+    redirect = os.environ.get("DAIKIN_REDIRECT_URI")
+    if not redirect:
+        sys.exit("DAIKIN_REDIRECT_URI is required: the redirect URI registered with the app on Daikin's portal")
     url = onecta.AUTHORIZE_URL + "?" + urllib.parse.urlencode(
         {"response_type": "code", "client_id": cid, "redirect_uri": redirect, "scope": onecta.SCOPE})
     # stdout is for the seed JSON only, so the owner can pipe it; everything else goes to stderr.
     print(f"Open this link, log in with your Onecta account and agree:\n\n{url}\n", file=sys.stderr)
-    sys.stderr.write("Paste the whole address the browser ends up on (https://localhost/?code=...): ")
+    sys.stderr.write("Paste the whole address the browser ends up on (...?code=...): ")
     sys.stderr.flush()
     pasted = sys.stdin.readline().strip()
     code = urllib.parse.parse_qs(urllib.parse.urlparse(pasted).query).get("code", [""])[0]
