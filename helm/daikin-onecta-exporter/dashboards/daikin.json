@@ -595,7 +595,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "daikin_setpoint_celsius",
+          "expr": "daikin_setpoint_celsius{setpoint!=\"leavingWaterOffset\"}",
           "legendFormat": "{{management_point}} setpoint {{setpoint}} ({{operation_mode}})"
         },
         {
@@ -659,15 +659,6 @@
           },
           "expr": "daikin_operation_mode_info == 1",
           "legendFormat": "{{management_point}} {{mode}}"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "daikin_on",
-          "legendFormat": "{{management_point}} on"
         }
       ],
       "fieldConfig": {

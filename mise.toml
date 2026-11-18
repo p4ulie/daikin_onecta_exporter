@@ -13,7 +13,7 @@ run = "uv pip install -r requirements.txt -r requirements-dev.txt"
 run = "uv run --with-requirements requirements.txt --with-requirements requirements-dev.txt python -m pytest -q tests/"
 
 [tasks.exporter]
-run = "python -m daikin_onecta_exporter.exporter"
+run = "uv run --with-requirements requirements.txt python -m daikin_onecta_exporter.exporter"
 
 # One-time OAuth login; the seed JSON is the only thing on stdout, the rest goes to stderr.
 [tasks.login]

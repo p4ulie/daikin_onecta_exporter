@@ -1,7 +1,9 @@
 """Read-only Daikin Onecta client: the token endpoint and GET /v1/gateway-devices, nothing else."""
 
 import json
+import logging
 import os
+import re
 import tempfile
 import time
 import urllib.error
@@ -11,6 +13,7 @@ import urllib.request
 TOKEN_URL = "https://idp.onecta.daikineurope.com/v1/oidc/token"
 AUTHORIZE_URL = "https://idp.onecta.daikineurope.com/v1/oidc/authorize"
 API_URL = "https://api.onecta.daikineurope.com/v1/gateway-devices"
+log = logging.getLogger("daikin_onecta_exporter.onecta")
 SCOPE = "openid onecta:basic.integration offline_access"
 REFRESH_MARGIN = 300  # seconds of access token left that trigger a refresh
 DEFAULT_RETRY_AFTER = 300  # a 429 without the header
@@ -43,6 +46,15 @@ def rate_limit_from(headers) -> dict:
             "remaining_minute": _int(headers, "X-RateLimit-Remaining-minute"), "retry_after": _int(headers, "Retry-After")}
 
 
+def _oauth_error(e) -> str:
+    """The OAuth `error` code (invalid_grant, invalid_client) as ", code"; the rest of the body may carry tokens."""
+    try:
+        err = json.load(e).get("error")
+    except Exception:
+        return ""
+    return f", {err}" if isinstance(err, str) and re.fullmatch(r"[a-z_]{1,40}", err) else ""
+
+
 def token_request(opener, form: dict) -> dict:
     """POST the form to the token endpoint; client id and secret ride in the body, which the OAuth spec allows."""
     req = urllib.request.Request(TOKEN_URL, data=urllib.parse.urlencode(form).encode(),
@@ -55,8 +67,8 @@ def token_request(opener, form: dict) -> dict:
         return body
     except urllib.error.HTTPError as e:
         # from None everywhere: the URL or body of the original error may carry a token
-        if e.code in (400, 401):
-            raise LoginError(f"token endpoint refused the grant (HTTP {e.code})") from None
+        if e.code in (400, 401, 403):
+            raise LoginError(f"token endpoint refused the grant (HTTP {e.code}{_oauth_error(e)})") from None
         raise OnectaError(f"token endpoint HTTP {e.code}") from None
     except Exception as e:
         raise OnectaError(f"token endpoint failed: {type(e).__name__}") from None
@@ -67,23 +79,30 @@ class Client:
         self.client_id, self.client_secret, self.token_file, self.opener = client_id, client_secret, str(token_file), opener
         self.rate_limit: dict | None = None
         self.blocked_until = 0.0
-        self.tok = self._load(seed_json)
+        self.token_saved = True  # False while the rotated login lives only in memory
+        self.tok, fresh_seed = self._load(seed_json)
         self.authorized_at = self.tok.get("authorized_at")
+        if fresh_seed:
+            self._persist()
 
-    def _load(self, seed_json) -> dict:
-        # The file wins: it holds the rotated refresh token; the seed is only for an empty volume.
+    def _load(self, seed_json) -> tuple[dict, bool]:
+        """The token dict and whether it is the seed. The file holds the rotated refresh token, so it wins
+        unless the seed's authorized_at is newer: that is a fresh login from the helper."""
+        stored = None
         try:
             with open(self.token_file) as f:
-                return json.load(f)
+                stored = json.load(f)
         except FileNotFoundError:
             pass
         except (OSError, ValueError):
-            return {}  # unreadable file: no refresh token, so login_ok 0 rather than a crash loop
+            stored = {}  # unreadable file: no refresh token, so login_ok 0 rather than a crash loop
         try:
             seed = json.loads(seed_json) if seed_json else {}
-            return {"refresh_token": seed["refresh_token"], "authorized_at": seed.get("authorized_at")}
-        except (ValueError, KeyError, TypeError):
-            return {}
+            seed = {"refresh_token": seed["refresh_token"], "authorized_at": seed.get("authorized_at")}
+            newer = stored is None or (seed["authorized_at"] or 0) > (stored.get("authorized_at") or 0)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return (stored or {}), False
+        return (seed, True) if newer else (stored, False)
 
     def _save(self):
         d = os.path.dirname(self.token_file) or "."
@@ -91,12 +110,33 @@ class Client:
         try:
             with os.fdopen(fd, "w") as f:
                 json.dump(self.tok, f)
+                f.flush()
+                os.fsync(f.fileno())  # the data must be on disk before the rename makes it the token file
             os.replace(tmp, self.token_file)
         except BaseException:
             os.unlink(tmp)
             raise
+        try:
+            dfd = os.open(d, os.O_RDONLY)
+            try:
+                os.fsync(dfd)  # makes the rename itself durable
+            finally:
+                os.close(dfd)
+        except OSError:
+            pass  # best effort: the file is already in place
+
+    def _persist(self):
+        """Save without ever failing the poll; token_saved says whether the rotated login is on disk."""
+        try:
+            self._save()
+            self.token_saved = True
+        except OSError as e:
+            self.token_saved = False
+            log.warning("token save failed (%s), the login is only in memory; retrying on the next poll", type(e).__name__)
 
     def _access_token(self) -> str:
+        if not self.token_saved:
+            self._persist()
         t = self.tok
         if t.get("access_token") and t.get("expires_at", 0) - time.time() > REFRESH_MARGIN:
             return t["access_token"]
@@ -107,16 +147,8 @@ class Client:
         # The refresh token rotates; keep the old one if a reply omits it.
         self.tok = {**t, "access_token": body["access_token"], "refresh_token": body.get("refresh_token") or t["refresh_token"],
                     "expires_at": time.time() + float(body.get("expires_in", 3600))}
-        self._save()  # ponytail: a failed write raises once; the in-memory token keeps this process going
+        self._persist()  # ponytail: a failed write is retried every poll; a restart before it works needs a new login
         return self.tok["access_token"]
-
-    @property
-    def expires_at(self):
-        return self.tok.get("expires_at", 0)
-
-    @expires_at.setter
-    def expires_at(self, v):
-        self.tok["expires_at"] = v
 
     def get_devices(self) -> list:
         if time.time() < self.blocked_until:

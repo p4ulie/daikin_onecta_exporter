@@ -15,7 +15,7 @@ Design: `docs/superpowers/specs/2026-11-18-daikin-onecta-exporter-design.md`.
 ```sh
 cp .env.example .env     # fill in DAIKIN_CLIENT_ID and DAIKIN_CLIENT_SECRET
 mise run test            # unit tests, no network
-mise run exporter        # needs a token: DAIKIN_TOKEN_FILE (or DAIKIN_TOKEN_JSON as a seed) from the login helper
+mise run exporter        # runs through uv with requirements.txt; needs a token: DAIKIN_TOKEN_FILE (or DAIKIN_TOKEN_JSON as a seed) from the login helper
 curl -s localhost:9879/metrics | grep ^daikin_
 ```
 
@@ -47,14 +47,14 @@ Do the steps in this order.
 
 ### 3. Authorize once and get the refresh token
 
-From a clone of this repository, on your workstation, run the login helper. It reads the client ID and secret
-without echoing them, prints a link, and writes only the token (as JSON) to its standard output, so you can pipe it
-straight into a secret store without it appearing on screen:
+From a clone of this repository, on your workstation, run the login helper. The shell's `read` takes the client ID
+and secret without echoing them. The helper prints a link and writes only the token (as JSON) to its standard
+output, so it never appears on screen. Run it under `umask 077` so the token file is private:
 
 ```sh
 read -r "DAIKIN_CLIENT_ID?Client ID: " && read -rs "DAIKIN_CLIENT_SECRET?Client secret: " && echo
 export DAIKIN_CLIENT_ID DAIKIN_CLIENT_SECRET
-mise run login > /tmp/daikin-token.json    # or: python -m daikin_onecta_exporter.login
+(umask 077; mise run login > /tmp/daikin-token.json)    # or: python -m daikin_onecta_exporter.login
 ```
 
 1. Open the link it prints in a browser and log in with your Onecta account.
@@ -83,9 +83,13 @@ the chart's values.
 ### 5. Renewing the login
 
 The exporter keeps the current token on its volume (`/data/token.json`) and rewrites it whenever Daikin issues a new
-one; the copy in OpenBao is only the seed for an empty volume. When `DaikinLoginFailing` or `DaikinLoginExpiring`
-fires, repeat steps 3 and 4, then delete the token file so the new seed is used: restart the pod after removing
-`/data/token.json`, or delete the PVC together with the pod.
+one. The copy in OpenBao is only a seed: the exporter uses it when the volume is empty or when its `authorized_at` is
+newer than the file's. When `DaikinLoginFailing` or `DaikinLoginExpiring` fires, run the login helper (step 3),
+update OpenBao (step 4), and restart the pod; the newer seed replaces the token file, nothing is deleted.
+
+If `DaikinTokenNotSaved` fires, the exporter still works but the rotated login is only in memory, so a restart would
+need a new browser login. Check the `/data` volume (full, read-only, wrong ownership); the exporter retries the write
+on every poll and the alert clears by itself.
 
 ## Helm chart
 
@@ -102,12 +106,12 @@ helm install daikin helm/daikin-onecta-exporter --set onecta.secretName=daikin-o
 | `persistence.size`, `.storageClass` | `1Gi`, `""` | RWO volume at `/data` for the rotated refresh token; empty class means the cluster default |
 | `resources` | 10m CPU, 32Mi request, 96Mi limit | Pod resources |
 | `serviceMonitor.enabled`, `.interval` | `false`, `60s` | Prometheus Operator scrape config |
-| `prometheusRule.enabled` | `false` | Alerts: unreachable, login failing, login expiring, error, tank cold |
+| `prometheusRule.enabled` | `false` | Alerts: unreachable, login failing, login expiring, token not saved, error, tank cold |
 | `alerts.tankMin` | `40` | Tank temperature (C) below which `DaikinTankCold` fires after 2h |
 | `dashboard.enabled`, `.labels`, `.annotations` | `false` | The "Heat pump" Grafana dashboard ConfigMap |
 
 The chart installs no CRDs. The ServiceMonitor and PrometheusRule need prometheus-operator, the dashboard needs the Grafana sidecar.
-The Deployment uses `Recreate` because the volume is ReadWriteOnce.
+The Deployment uses `Recreate` because the volume is ReadWriteOnce. The PVC carries `helm.sh/resource-policy: keep`: it holds the live login, so `helm uninstall` leaves it.
 
 ## Pushing changes and releasing
 

@@ -43,17 +43,18 @@ Decided by the owner: cloud (Onecta) first, X10A hardware as plan B. Local adapt
 - Package `daikin_onecta_exporter/`: `onecta.py` (token refresh, GET, rate-limit headers; `urllib`, no new HTTP
   dependency), `exporter.py` (state, poll, collector, `main`), `login.py` (helper below).
 - Env: `DAIKIN_CLIENT_ID`, `DAIKIN_CLIENT_SECRET` (required), `DAIKIN_TOKEN_FILE` (default `/data/token.json`),
-  `DAIKIN_TOKEN_JSON` (seed, used only when the token file does not exist), **`DAIKIN_INTERVAL` (seconds, default
+  `DAIKIN_TOKEN_JSON` (seed, used when the token file does not exist or the seed's `authorized_at` is newer than the file's, and then written to the file), **`DAIKIN_INTERVAL` (seconds, default
   600, minimum 60)**: log a warning at start when 86400/interval exceeds 180 calls/day. `DAIKIN_EXPORTER_PORT`
   (default 9879).
 - Token file: `{"refresh_token", "access_token", "expires_at", "authorized_at"}`, written atomically (temp file +
   rename) after every refresh; `authorized_at` is carried over from the seed. Refresh when the access token has
-  < 5 min left. A refresh failing with 400/401 (`invalid_grant`) is a login failure: `daikin_login_ok 0`.
+  < 5 min left. A refresh failing with 400, 401 or 403 is a login failure: `daikin_login_ok 0`; the OAuth `error` field (`invalid_grant`, `invalid_client`) is logged, never the rest of the body. The file is fsynced (and its directory, best effort) before the rename. A failed write never fails the poll: it is logged, retried on every later poll, and shown by `daikin_token_saved 0`; the exporter never exits on it.
 - On 429: skip polls until `Retry-After` has passed.
 - Metrics (labels `device` = gateway-device id, `management_point` = `embeddedId`):
   - `daikin_up`, `daikin_last_success_timestamp_seconds`, `daikin_read_duration_seconds`, `daikin_read_errors_total`,
     `daikin_login_ok`, `daikin_authorized_timestamp_seconds`, `daikin_ratelimit_remaining_day`,
-    `daikin_ratelimit_remaining_minute`, `daikin_poll_interval_seconds`.
+    `daikin_ratelimit_remaining_minute`, `daikin_poll_interval_seconds`, `daikin_token_saved` (1 when the rotated login is on the volume, 0 when only in memory).
+  - Entries of `sensoryData`, setpoints and `consumptionData.electrical` that are not objects (`"unit": "kWh"`, null) are skipped.
   - `daikin_temperature_celsius{sensor}` (every numeric `sensoryData` entry).
   - `daikin_setpoint_celsius{operation_mode,setpoint}`.
   - `daikin_on` (onOffMode on=1), `daikin_operation_mode_info{mode}` 1, `daikin_powerful_mode_active`.
@@ -75,7 +76,7 @@ JSON (`refresh_token`, `authorized_at`) to stdout, so the owner pipes it into Op
 ## Chart `helm/daikin-onecta-exporter`
 
 As TapHome's: `required` client secret name; Secret keys `client-id`, `client-secret`, `token-json`; env from
-`secretKeyRef`; `enableServiceLinks: false`; port 9879; a PVC (`persistence.size` 1Gi, `storageClass` value,
+`secretKeyRef`; `enableServiceLinks: false`; port 9879; a PVC (annotated `helm.sh/resource-policy: keep`, it holds the live login; `persistence.size` 1Gi, `storageClass` value,
 default empty) mounted at `/data`; Deployment `strategy: Recreate` (RWO volume); `fsGroup: 65534`; `interval` value
 → `DAIKIN_INTERVAL`; ServiceMonitor interval 60s. Version == appVersion == image tag, starting 0.1.0.
 
@@ -84,6 +85,7 @@ default empty) mounted at `/data`; Deployment `strategy: Recreate` (RWO volume);
 - `DaikinUnreachable`: `daikin_up == 0` for 1h.
 - `DaikinLoginFailing`: `daikin_login_ok == 0` for 15m (summary: run the login helper again).
 - `DaikinLoginExpiring`: `time() - daikin_authorized_timestamp_seconds > 335 * 86400` for 1h.
+- `DaikinTokenNotSaved`: `daikin_token_saved == 0` for 15m (summary: the rotated login is only in memory, a restart would need a new browser login; check the /data volume).
 - `DaikinError`: `daikin_error_state == 1` for 10m.
 - `DaikinTankCold`: `daikin_temperature_celsius{sensor="tankTemperature"} < 40` for 2h (default, chart value).
 

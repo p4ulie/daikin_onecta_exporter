@@ -11,7 +11,7 @@ TOGGLES = ["--set", "serviceMonitor.enabled=true", "--set", "prometheusRule.enab
 KNOWN = {
     "daikin_up", "daikin_login_ok", "daikin_last_success_timestamp_seconds", "daikin_read_duration_seconds",
     "daikin_read_errors_total", "daikin_authorized_timestamp_seconds", "daikin_ratelimit_remaining_day",
-    "daikin_ratelimit_remaining_minute", "daikin_poll_interval_seconds",
+    "daikin_ratelimit_remaining_minute", "daikin_poll_interval_seconds", "daikin_token_saved",
     "daikin_temperature_celsius", "daikin_setpoint_celsius", "daikin_on", "daikin_operation_mode_info",
     "daikin_powerful_mode_active", "daikin_error_state", "daikin_warning_state", "daikin_emergency_state",
     "daikin_error_code_info", "daikin_energy_today_kwh", "daikin_energy_yesterday_kwh", "daikin_info",
@@ -65,6 +65,8 @@ def test_defaults_render_workload_and_volume():
     assert c["volumeMounts"] == [{"name": "data", "mountPath": "/data"}]
     assert pod["volumes"][0]["persistentVolumeClaim"]["claimName"] == docs["PersistentVolumeClaim"]["metadata"]["name"]
     assert docs["Service"]["spec"]["ports"][0]["port"] == 9879
+    # the volume holds the live login: helm uninstall must not delete it
+    assert docs["PersistentVolumeClaim"]["metadata"]["annotations"] == {"helm.sh/resource-policy": "keep"}
     spec = docs["PersistentVolumeClaim"]["spec"]
     assert spec["accessModes"] == ["ReadWriteOnce"] and spec["resources"]["requests"]["storage"] == "1Gi"
     assert "storageClassName" not in spec
@@ -93,11 +95,14 @@ def test_all_toggles():
         "DaikinUnreachable": ("daikin_up == 0", "1h"),
         "DaikinLoginFailing": ("daikin_login_ok == 0", "15m"),
         "DaikinLoginExpiring": ("time() - daikin_authorized_timestamp_seconds > 335 * 86400", "1h"),
+        "DaikinTokenNotSaved": ("daikin_token_saved == 0", "15m"),
         "DaikinError": ("daikin_error_state == 1", "10m"),
         "DaikinTankCold": ('daikin_temperature_celsius{sensor="tankTemperature"} < 40', "2h"),
     }
     assert all(r["labels"]["severity"] == "warning" for r in rules.values())
     assert "login helper" in rules["DaikinLoginFailing"]["annotations"]["summary"]
+    summary = rules["DaikinTokenNotSaved"]["annotations"]["summary"]
+    assert "only in memory" in summary and "browser login" in summary and "/data" in summary
 
     cms = [c for c in all_docs if c["kind"] == "ConfigMap"]
     assert len(cms) == 1 and set(cms[0]["data"]) == {"daikin.json"}
@@ -136,3 +141,10 @@ def test_metrics_exist():
             # empty legend = exporter-health panel without labels
             legend = t["legendFormat"]
             assert not legend or any(k in legend for k in ("{{management_point}}", "{{sensor}}", "{{mode}}")), legend
+
+
+def test_dashboard_panel_queries():
+    with open(f"{CHART}/dashboards/daikin.json") as f:
+        panels = {p["title"]: p for p in json.load(f)["panels"]}
+    assert [t["expr"] for t in panels["Mode"]["targets"]] == ["daikin_operation_mode_info == 1"]  # on/off has its own panel
+    assert 'setpoint!="leavingWaterOffset"' in panels["Setpoint vs actual"]["targets"][0]["expr"]  # an offset, not degrees

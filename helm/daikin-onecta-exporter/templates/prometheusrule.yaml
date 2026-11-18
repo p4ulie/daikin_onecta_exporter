@@ -30,6 +30,13 @@ spec:
             severity: warning
           annotations:
             summary: The Daikin login is older than 335 days and lapses at about a year; run the login helper again.
+        - alert: DaikinTokenNotSaved
+          expr: daikin_token_saved == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: The rotated Daikin login is only in memory and a restart would need a new browser login; check the /data volume.
         - alert: DaikinError
           expr: daikin_error_state == 1
           for: 10m

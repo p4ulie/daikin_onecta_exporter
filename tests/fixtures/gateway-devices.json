@@ -15,6 +15,7 @@
         "embeddedId": "climateControlMainZone",
         "managementPointType": "climateControl",
         "consumptionData": {"value": {"electrical": {
+          "unit": "kWh",
           "heating": {"d": [1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 4, 5, null, null, null, null, null, null, null, null, null]},
           "cooling": {"d": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, null, null, null, null, null, null, null]}
         }}},
@@ -28,7 +29,8 @@
           "roomTemperature": {"value": 21},
           "outdoorTemperature": {"value": 4.5},
           "leavingWaterTemperature": {"value": 31},
-          "returnWaterTemperature": {"value": null}
+          "returnWaterTemperature": {"value": null},
+          "brokenSensor": null
         }},
         "temperatureControl": {"value": {"operationModes": {
           "heating": {"setpoints": {

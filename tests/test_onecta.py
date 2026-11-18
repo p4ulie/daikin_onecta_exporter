@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import os
@@ -76,7 +77,7 @@ def test_no_token_and_no_seed_is_a_login_error(tmp_path):
         client(tmp_path / "token.json", FakeOpener()).get_devices()
 
 
-@pytest.mark.parametrize("code", [400, 401])
+@pytest.mark.parametrize("code", [400, 401, 403])
 def test_invalid_grant_is_login_error(tmp_path, code):
     path = token_file(tmp_path, expires_at=0)
     c = client(path, FakeOpener(token=http_error(code)))
@@ -114,3 +115,42 @@ def test_errors_never_carry_secrets(tmp_path, caplog):
         for s in ("ref-1", SECRET, "acc-0"):
             assert s not in str(e.value) and s not in repr(e.value)
             assert e.value.__cause__ is None and e.value.__suppress_context__
+
+
+def test_save_fsyncs_file_and_directory_before_rename(tmp_path, monkeypatch):
+    events = []
+    monkeypatch.setattr(onecta.os, "fsync", lambda fd: events.append("fsync"))
+    real = os.replace
+    monkeypatch.setattr(onecta.os, "replace", lambda a, b: (events.append("replace"), real(a, b)))
+    client(token_file(tmp_path, expires_at=0), FakeOpener()).get_devices()
+    assert events == ["fsync", "replace", "fsync"]  # file, rename, then the directory
+
+
+def test_login_error_logs_oauth_error_field_only(tmp_path):
+    for code in (400, 401, 403):
+        c = client(token_file(tmp_path, expires_at=0), FakeOpener(token=http_error(code)))
+        with pytest.raises(LoginError) as e:
+            c.get_devices()
+        assert "invalid_grant" in str(e.value) and str(code) in str(e.value)
+    odd = urllib.error.HTTPError("https://x", 400, "e", {}, io.BytesIO(b'{"error":"refresh_token=ref-1 acc-0"}'))
+    with pytest.raises(LoginError) as e:
+        client(token_file(tmp_path, expires_at=0), FakeOpener(token=odd)).get_devices()
+    assert "ref-1" not in str(e.value)  # only a plain error code is passed on
+
+
+def test_newer_seed_wins_and_is_written(tmp_path):
+    path = token_file(tmp_path)  # authorized_at 1700000000
+    op = FakeOpener()
+    c = client(path, op, seed=json.dumps({"refresh_token": "seed-ref", "authorized_at": 1800000000}))
+    assert c.authorized_at == 1800000000
+    saved = json.loads(path.read_text())
+    assert saved["refresh_token"] == "seed-ref" and saved["authorized_at"] == 1800000000
+    c.get_devices()
+    assert op.calls[0][1]["refresh_token"] == "seed-ref"  # no stale access token from the old file
+
+
+def test_older_or_equal_seed_loses(tmp_path):
+    path = token_file(tmp_path)
+    for at in (1600000000, 1700000000):
+        client(path, FakeOpener(), seed=json.dumps({"refresh_token": "seed-ref", "authorized_at": at}))
+        assert json.loads(path.read_text())["refresh_token"] == "ref-1"

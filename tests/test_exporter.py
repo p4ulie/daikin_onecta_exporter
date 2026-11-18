@@ -120,7 +120,7 @@ def test_429_skips_polls_until_retry_after(tmp_path, monkeypatch):
     now = time.time()
     monkeypatch.setattr("daikin_onecta_exporter.exporter.time.time", lambda: now + 301)
     monkeypatch.setattr("daikin_onecta_exporter.onecta.time.time", lambda: now + 301)
-    c.expires_at = now + 10000
+    c.tok["expires_at"] = now + 10000
     poll_once(state, c)
     assert len(op.calls) == 2 and "daikin_up 1.0" in render(state)
 
@@ -195,3 +195,47 @@ def test_missing_env_exits(monkeypatch):
     monkeypatch.delenv("DAIKIN_CLIENT_SECRET", raising=False)
     with pytest.raises(SystemExit):
         exporter.main()
+
+
+def test_build_skips_non_dict_entries():
+    mp = {"embeddedId": "a", "sensoryData": {"value": {"t": None, "u": "x", "ok": {"value": 1}}},
+          "temperatureControl": {"value": {"operationModes": {"heating": {"setpoints": {"s": None, "o": {"value": 2}}}, "x": None}}},
+          "consumptionData": {"value": {"electrical": {"unit": "kWh", "heating": None}}}}
+    s = build([{"id": "x", "managementPoints": [mp]}])
+    assert s == {"daikin_temperature_celsius": [(["x", "a", "ok"], 1.0)], "daikin_setpoint_celsius": [(["x", "a", "heating", "o"], 2.0)]}
+
+
+def failing_save(monkeypatch, fails):
+    """Make the first `fails` saves raise OSError."""
+    real, n = onecta.Client._save, [0]
+
+    def save(self):
+        n[0] += 1
+        if n[0] <= fails:
+            raise OSError("disk full")
+        real(self)
+    monkeypatch.setattr(onecta.Client, "_save", save)
+    return n
+
+
+def test_failed_token_save_keeps_poll_and_retries(tmp_path, monkeypatch, caplog):
+    failing_save(monkeypatch, 2)
+    (tmp_path / "token.json").write_text(json.dumps({"refresh_token": "ref-1", "expires_at": 0, "authorized_at": 1700000000}))
+    c = onecta.Client("cid", SECRET, tmp_path / "token.json", opener=FakeOpener())
+    state = State()
+    with caplog.at_level(logging.WARNING):
+        poll_once(state, c)
+        out = render(state)
+        assert "daikin_up 1.0" in out and "daikin_token_saved 0.0" in out  # poll survives, rotated login only in memory
+        poll_once(state, c)  # retry fails again
+        assert "daikin_token_saved 0.0" in render(state)
+        poll_once(state, c)  # third save works
+    assert "daikin_token_saved 1.0" in render(state)
+    assert json.loads((tmp_path / "token.json").read_text())["refresh_token"] == "ref-2"
+    assert caplog.text.count("token save failed") == 2
+    for s in ("ref-1", "ref-2", "acc-1", SECRET):
+        assert s not in caplog.text
+
+
+def test_token_saved_is_one_before_first_poll():
+    assert "daikin_token_saved 1.0" in render(State())

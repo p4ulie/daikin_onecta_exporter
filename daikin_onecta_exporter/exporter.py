@@ -45,6 +45,7 @@ class State:
     rate_limit: dict = field(default_factory=dict)
     authorized_at: float | None = None
     interval: float | None = None
+    token_saved: bool = True
 
 
 def _v(obj, key):
@@ -55,6 +56,11 @@ def _v(obj, key):
 
 def _num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _entries(x):
+    """The dict-valued items of x; real replies mix in scalars ("unit": "kWh") and nulls. A container that is no dict still raises."""
+    return [(k, v) for k, v in (x or {}).items() if isinstance(v, dict)]
 
 
 def build(devices) -> dict:
@@ -71,11 +77,11 @@ def build(devices) -> dict:
         dev_id = str(dev["id"])  # the gateway device id is the `device` label
         for mp in dev["managementPoints"]:
             base = (dev_id, str(mp["embeddedId"]))
-            for sensor, c in (_v(mp, "sensoryData") or {}).items():
+            for sensor, c in _entries(_v(mp, "sensoryData")):
                 if _num(c.get("value")):
                     add("daikin_temperature_celsius", base, (sensor,), c["value"])
-            for mode, m in ((_v(mp, "temperatureControl") or {}).get("operationModes") or {}).items():
-                for name, c in (m.get("setpoints") or {}).items():
+            for mode, m in _entries((_v(mp, "temperatureControl") or {}).get("operationModes")):
+                for name, c in _entries(m.get("setpoints")):
                     if _num(c.get("value")):
                         add("daikin_setpoint_celsius", base, (mode, name), c["value"])
             if (on := _v(mp, "onOffMode")) is not None:
@@ -88,7 +94,7 @@ def build(devices) -> dict:
                     add(name, base, (), b)
             if isinstance(code := _v(mp, "errorCode"), str):
                 add("daikin_error_code_info", base, (code,), 1)
-            for mode, c in ((_v(mp, "consumptionData") or {}).get("electrical") or {}).items():
+            for mode, c in _entries((_v(mp, "consumptionData") or {}).get("electrical")):
                 d = c.get("d")
                 if isinstance(d, list) and len(d) == 24:
                     # 12 two-hour buckets of yesterday, then 12 of today; null is the future
@@ -121,6 +127,7 @@ def poll_once(state: State, client: onecta.Client) -> None:
         state.last_success = time.time()
     state.rate_limit = client.rate_limit or state.rate_limit
     state.authorized_at = client.authorized_at
+    state.token_saved = client.token_saved
 
 
 class DaikinCollector:
@@ -136,6 +143,7 @@ class DaikinCollector:
             yield GaugeMetricFamily("daikin_last_success_timestamp_seconds", "Unix time of the last successful poll", value=s.last_success)
         if s.duration is not None:
             yield GaugeMetricFamily("daikin_read_duration_seconds", "Duration of the last poll", value=s.duration)
+        yield GaugeMetricFamily("daikin_token_saved", "0 when the rotated login could not be written to the volume", value=float(s.token_saved))
         yield CounterMetricFamily("daikin_read_errors", "Failed polls", value=s.errors)
         if s.authorized_at is not None:
             yield GaugeMetricFamily("daikin_authorized_timestamp_seconds", "Unix time of the login", value=s.authorized_at)
