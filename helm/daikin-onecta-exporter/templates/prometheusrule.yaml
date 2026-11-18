@@ -1,0 +1,47 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    {{- include "daikin-onecta-exporter.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: daikin
+      rules:
+        - alert: DaikinUnreachable
+          expr: daikin_up == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: The Daikin cloud has not answered a poll for an hour.
+        - alert: DaikinLoginFailing
+          expr: daikin_login_ok == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Daikin rejected the refresh token; run the login helper again and update the secret.
+        - alert: DaikinLoginExpiring
+          expr: time() - daikin_authorized_timestamp_seconds > 335 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: The Daikin login is older than 335 days and lapses at about a year; run the login helper again.
+        - alert: DaikinError
+          expr: daikin_error_state == 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The heat pump reports an error ({{`{{ $labels.management_point }}`}})."
+        - alert: DaikinTankCold
+          expr: daikin_temperature_celsius{sensor="tankTemperature"} < {{ .Values.alerts.tankMin }}
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "The hot water tank has been below {{ .Values.alerts.tankMin }} C for 2 hours."
+{{- end }}

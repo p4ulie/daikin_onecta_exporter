@@ -87,6 +87,28 @@ one; the copy in OpenBao is only the seed for an empty volume. When `DaikinLogin
 fires, repeat steps 3 and 4, then delete the token file so the new seed is used: restart the pod after removing
 `/data/token.json`, or delete the PVC together with the pod.
 
+## Helm chart
+
+```sh
+helm install daikin helm/daikin-onecta-exporter --set onecta.secretName=daikin-onecta
+```
+
+| Value | Default | Meaning |
+|---|---|---|
+| `image.repository` | `10.34.1.1:30095/daikin-onecta-exporter` | Image to run |
+| `image.tag` | `""` | Empty means the chart's `appVersion` |
+| `onecta.secretName` | none | Required existing Secret with keys `client-id`, `client-secret`, `token-json`; the chart creates none |
+| `onecta.interval` | `600` | Poll interval in seconds (Daikin allows about 200 calls a day) |
+| `persistence.size`, `.storageClass` | `1Gi`, `""` | RWO volume at `/data` for the rotated refresh token; empty class means the cluster default |
+| `resources` | 10m CPU, 32Mi request, 96Mi limit | Pod resources |
+| `serviceMonitor.enabled`, `.interval` | `false`, `60s` | Prometheus Operator scrape config |
+| `prometheusRule.enabled` | `false` | Alerts: unreachable, login failing, login expiring, error, tank cold |
+| `alerts.tankMin` | `40` | Tank temperature (C) below which `DaikinTankCold` fires after 2h |
+| `dashboard.enabled`, `.labels`, `.annotations` | `false` | The "Heat pump" Grafana dashboard ConfigMap |
+
+The chart installs no CRDs. The ServiceMonitor and PrometheusRule need prometheus-operator, the dashboard needs the Grafana sidecar.
+The Deployment uses `Recreate` because the volume is ReadWriteOnce.
+
 ## Pushing changes and releasing
 
 Changes are committed straight to `main` and pushed:

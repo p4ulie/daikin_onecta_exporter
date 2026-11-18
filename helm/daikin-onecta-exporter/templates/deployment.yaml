@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    {{- include "daikin-onecta-exporter.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # The volume is ReadWriteOnce and holds the rotating refresh token, so two pods must never overlap.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "daikin-onecta-exporter.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "daikin-onecta-exporter.labels" . | nindent 8 }}
+    spec:
+      # Kubernetes injects <SERVICE>_PORT for every Service; ours is named daikin-onecta-exporter, so without this the pod
+      # gets DAIKIN_ONECTA_EXPORTER_PORT=tcp://<ip>:9879 and the exporter cannot parse its own port.
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534  # makes the mounted volume writable for the non-root user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          env:
+            {{- $secret := required "onecta.secretName is required" .Values.onecta.secretName }}
+            - name: DAIKIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret | quote }}
+                  key: client-id
+            - name: DAIKIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret | quote }}
+                  key: client-secret
+            - name: DAIKIN_TOKEN_JSON  # seed, used only while /data/token.json does not exist
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret | quote }}
+                  key: token-json
+            - name: DAIKIN_TOKEN_FILE
+              value: /data/token.json
+            - name: DAIKIN_INTERVAL
+              value: {{ .Values.onecta.interval | quote }}
+          ports:
+            - name: metrics
+              containerPort: 9879
+          readinessProbe:
+            tcpSocket:
+              port: metrics
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Chart.Name }}
